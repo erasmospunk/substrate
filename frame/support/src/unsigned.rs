@@ -35,7 +35,7 @@ pub use crate::sp_runtime::transaction_validity::{
 /// # 	impl frame_support::unsigned::ValidateUnsigned for Module {
 /// # 		type Call = Call;
 /// #
-/// # 		fn validate_unsigned(call: &Self::Call) -> frame_support::unsigned::TransactionValidity {
+/// # 		fn validate_unsigned_(call: &Self::Call) -> frame_support::unsigned::TransactionValidity {
 /// # 			unimplemented!();
 /// # 		}
 /// # 	}
@@ -70,20 +70,20 @@ macro_rules! impl_outer_validate_unsigned {
 		impl $crate::unsigned::ValidateUnsigned for $runtime {
 			type Call = Call;
 
-			fn pre_dispatch(call: &Self::Call) -> Result<(), $crate::unsigned::TransactionValidityError> {
+			fn pre_dispatch_unsigned_(call: &Self::Call) -> Result<(), $crate::unsigned::TransactionValidityError> {
 				#[allow(unreachable_patterns)]
 				match call {
-					$( Call::$module(inner_call) => $module::pre_dispatch(inner_call), )*
+					$( Call::$module(inner_call) => $module::pre_dispatch_unsigned_(inner_call), )*
 					// pre-dispatch should not stop inherent extrinsics, validation should prevent
 					// including arbitrary (non-inherent) extrinsics to blocks.
 					_ => Ok(()),
 				}
 			}
 
-			fn validate_unsigned(call: &Self::Call) -> $crate::unsigned::TransactionValidity {
+			fn validate_unsigned_(call: &Self::Call) -> $crate::unsigned::TransactionValidity {
 				#[allow(unreachable_patterns)]
 				match call {
-					$( Call::$module(inner_call) => $module::validate_unsigned(inner_call), )*
+					$( Call::$module(inner_call) => $module::validate_unsigned_(inner_call), )*
 					_ => $crate::unsigned::UnknownTransaction::NoUnsignedValidator.into(),
 				}
 			}
@@ -113,7 +113,7 @@ mod test_partial_and_full_call {
 		impl super::super::ValidateUnsigned for Module {
 			type Call = Call;
 
-			fn validate_unsigned(_call: &Self::Call) -> super::super::TransactionValidity {
+			fn validate_unsigned_(_call: &Self::Call) -> super::super::TransactionValidity {
 				unimplemented!();
 			}
 		}

@@ -66,7 +66,7 @@
 //! # impl ValidateUnsigned for Runtime {
 //! # 	type Call = ();
 //! #
-//! # 	fn validate_unsigned(_call: &Self::Call) -> TransactionValidity {
+//! # 	fn validate_unsigned_(_call: &Self::Call) -> TransactionValidity {
 //! # 		UnknownTransaction::NoUnsignedValidator.into()
 //! # 	}
 //! # }
@@ -489,11 +489,11 @@ mod tests {
 	impl ValidateUnsigned for Runtime {
 		type Call = Call;
 
-		fn pre_dispatch(_call: &Self::Call) -> Result<(), TransactionValidityError> {
+		fn pre_dispatch_unsigned_(_call: &Self::Call) -> Result<(), TransactionValidityError> {
 			Ok(())
 		}
 
-		fn validate_unsigned(call: &Self::Call) -> TransactionValidity {
+		fn validate_unsigned_(call: &Self::Call) -> TransactionValidity {
 			match call {
 				Call::Balances(BalancesCall::set_balance(_, _, _)) => Ok(Default::default()),
 				_ => UnknownTransaction::NoUnsignedValidator.into(),

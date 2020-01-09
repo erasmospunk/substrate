@@ -899,15 +899,15 @@ pub trait ValidateUnsigned {
 	/// Validate the call right before dispatch.
 	///
 	/// This method should be used to prevent transactions already in the pool
-	/// (i.e. passing `validate_unsigned`) from being included in blocks
+	/// (i.e. passing `validate_unsigned_`) from being included in blocks
 	/// in case we know they now became invalid.
 	///
-	/// By default it's a good idea to call `validate_unsigned` from within
+	/// By default it's a good idea to call `validate_unsigned_` from within
 	/// this function again to make sure we never include an invalid transaction.
 	///
 	/// Changes made to storage WILL be persisted if the call returns `Ok`.
-	fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
-		Self::validate_unsigned(call)
+	fn pre_dispatch_unsigned_(call: &Self::Call) -> Result<(), TransactionValidityError> {
+		Self::validate_unsigned_(call)
 			.map(|_| ())
 			.map_err(Into::into)
 	}
@@ -918,7 +918,7 @@ pub trait ValidateUnsigned {
 	/// whether the transaction would panic if it were included or not.
 	///
 	/// Changes made to storage should be discarded by caller.
-	fn validate_unsigned(call: &Self::Call) -> TransactionValidity;
+	fn validate_unsigned_(call: &Self::Call) -> TransactionValidity;
 }
 
 /// Opaque datatype that may be destructured into a series of raw byte slices (which represent

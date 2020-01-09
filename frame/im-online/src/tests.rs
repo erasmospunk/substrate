@@ -127,7 +127,7 @@ fn heartbeat(
 	let signature = id.sign(&heartbeat.encode()).unwrap();
 
 	#[allow(deprecated)] // Allow ValidateUnsigned
-	ImOnline::pre_dispatch(&crate::Call::heartbeat(heartbeat.clone(), signature.clone()))
+	ImOnline::pre_dispatch_unsigned_(&crate::Call::heartbeat(heartbeat.clone(), signature.clone()))
 		.map_err(|e| <&'static str>::from(e))?;
 	ImOnline::heartbeat(
 		Origin::system(frame_system::RawOrigin::None),
