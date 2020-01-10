@@ -1218,6 +1218,42 @@ impl<T: Trait + Send + Sync> SignedExtension for CheckVersion<T> {
 	}
 }
 
+
+/// Something that can validate unsigned extrinsics for the transaction pool.
+#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+pub struct CheckUnsigned<T: Trait + Send + Sync>(sp_std::marker::PhantomData<T>);
+
+impl<T: Trait + Send + Sync> Debug for CheckUnsigned<T> {
+	#[cfg(feature = "std")]
+	fn fmt(&self, f: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+		write!(f, "CheckUnsigned")
+	}
+
+	#[cfg(not(feature = "std"))]
+	fn fmt(&self, _: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+		Ok(())
+	}
+}
+
+impl<T: Trait + Send + Sync> CheckUnsigned<T> {
+	/// Create new `SignedExtension` to check runtime version.
+	pub fn new() -> Self {
+		Self(sp_std::marker::PhantomData)
+	}
+}
+
+impl<T: Trait + Send + Sync> SignedExtension for CheckUnsigned<T> {
+	type AccountId = T::AccountId;
+	type Call = <T as Trait>::Call;
+	type AdditionalSigned = ();
+	type DispatchInfo = DispatchInfo;
+	type Pre = ();
+
+	fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
+		Ok(())
+	}
+}
+
 pub struct ChainContext<T>(sp_std::marker::PhantomData<T>);
 impl<T> Default for ChainContext<T> {
 	fn default() -> Self {
