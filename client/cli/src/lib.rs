@@ -299,7 +299,7 @@ impl<'a, CC, RP> ParseAndPrepare<'a, CC, RP> {
 	pub fn into_configuration<C, G, E, S>(
 		self,
 		spec_factory: S,
-	) -> error::Result<Configuration<C, G, E>>
+	) -> Option<error::Result<Configuration<C, G, E>>>
 	where
 		C: Default,
 		G: RuntimeGenesis,
@@ -308,8 +308,44 @@ impl<'a, CC, RP> ParseAndPrepare<'a, CC, RP> {
 	{
 		match self {
 			ParseAndPrepare::Run(c) =>
-				create_run_node_config(c.params.left, spec_factory, c.impl_name, c.version),
-			_ => todo!(),
+				Some(create_run_node_config(
+					c.params.left,
+					spec_factory,
+					c.impl_name,
+					c.version
+				)),
+			ParseAndPrepare::BuildSpec(_) => None,
+			ParseAndPrepare::ExportBlocks(c) =>
+				Some(create_config_with_db_path(
+					spec_factory,
+					&c.params.shared_params,
+					c.version,
+				)),
+			ParseAndPrepare::ImportBlocks(c) =>
+				Some(create_config_with_db_path(
+					spec_factory,
+					&c.params.shared_params,
+					c.version,
+				)),
+			ParseAndPrepare::CheckBlock(c) =>
+				Some(create_config_with_db_path(
+					spec_factory,
+					&c.params.shared_params,
+					c.version,
+				)),
+			ParseAndPrepare::PurgeChain(c) =>
+				Some(create_config_with_db_path(
+					spec_factory,
+					&c.params.shared_params,
+					c.version
+				)),
+			ParseAndPrepare::RevertChain(c) =>
+				Some(create_config_with_db_path(
+					spec_factory,
+					&c.params.shared_params,
+					c.version,
+				)),
+			ParseAndPrepare::CustomCommand(_) => None,
 		}
 	}
 }
@@ -1217,5 +1253,41 @@ mod tests {
 
 		assert!(no_config_dir().is_ok());
 		assert!(some_config_dir("x".to_string()).is_ok());
+	}
+
+	#[test]
+	fn parse_and_prepare_into_configuration() {
+		let chain_spec = ChainSpec::from_genesis(
+			"test",
+			"test-id",
+			|| (),
+			Vec::new(),
+			None,
+			None,
+			None,
+			None,
+		);
+		let version = VersionInfo {
+			name: "test",
+			version: "42",
+			commit: "234234",
+			executable_name: "test",
+			description: "cool test",
+			author: "universe",
+			support_url: "com",
+		};
+		let spec_factory = |_: &str| Ok(Some(chain_spec.clone()));
+
+		let args = vec!["substrate", "--dev", "--state-cache-size=42"];
+		let pnp = parse_and_prepare::<NoCustom, NoCustom, _>(&version, "test", args);
+		let config = pnp.into_configuration::<(), _, _, _>(spec_factory).unwrap().unwrap();
+		assert_eq!(config.roles, sc_service::Roles::AUTHORITY);
+		assert_eq!(config.state_cache_size, 42);
+
+		let args = vec!["substrate", "import-blocks", "--dev"];
+		let pnp = parse_and_prepare::<NoCustom, NoCustom, _>(&version, "test", args);
+		let config = pnp.into_configuration::<(), _, _, _>(spec_factory).unwrap().unwrap();
+		// NOTE: only RunCmd (no subcommand) knows --dev
+		assert_eq!(config.roles, sc_service::Roles::FULL);
 	}
 }
