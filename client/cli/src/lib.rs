@@ -1174,6 +1174,21 @@ fn kill_color(s: &str) -> String {
 mod tests {
 	use super::*;
 	use sc_network::config::identity::ed25519;
+	use serde::{Serialize, Deserialize};
+
+	#[derive(Debug, Serialize, Deserialize)]
+	struct Genesis;
+
+	impl sp_runtime::BuildStorage for Genesis {
+		fn assimilate_storage(
+			&self,
+			storage: &mut sp_core::storage::Storage,
+		) -> Result<(), String> {
+			Ok(())
+		}
+	}
+
+	type TestSpec = ChainSpec<Genesis>;
 
 	#[test]
 	fn tests_node_name_good() {
@@ -1288,10 +1303,10 @@ mod tests {
 
 	#[test]
 	fn parse_and_prepare_into_configuration() {
-		let chain_spec = ChainSpec::from_genesis(
+		let chain_spec = TestSpec::from_genesis(
 			"test",
 			"test-id",
-			|| (),
+			|| Genesis,
 			Vec::new(),
 			None,
 			None,

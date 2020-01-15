@@ -39,6 +39,7 @@ rpassword = "4.0.1"
 
 [dev-dependencies]
 tempfile = "3.1.0"
+serde = { version = "1.0.101", features = ["derive"] }
 
 [features]
 wasmtime = [
