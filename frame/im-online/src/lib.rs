@@ -75,13 +75,14 @@ use codec::{Encode, Decode};
 use sp_core::offchain::{OpaqueNetworkState, StorageKind};
 use sp_std::prelude::*;
 use sp_std::convert::TryInto;
+use sp_std::fmt::Debug;
 use pallet_session::historical::IdentificationTuple;
 use sp_runtime::{
 	RuntimeDebug,
-	traits::{Convert, Member, Printable, Saturating}, Perbill,
+	traits::{Convert, Member, Printable, Saturating, SignedExtension}, Perbill,
 	transaction_validity::{
 		TransactionValidity, ValidTransaction, InvalidTransaction,
-		TransactionPriority,
+		TransactionPriority, TransactionValidityError
 	},
 };
 use sp_staking::{
@@ -89,8 +90,8 @@ use sp_staking::{
 	offence::{ReportOffence, Offence, Kind},
 };
 use frame_support::{
-	decl_module, decl_event, decl_storage, print, Parameter, debug, decl_error,
-	traits::Get,
+	decl_module, decl_event, decl_storage, print, Parameter, debug, decl_error, traits::Get,
+	weights::DispatchInfo,
 };
 use frame_system::{self as system, ensure_none};
 use frame_system::offchain::SubmitUnsignedTransaction;
@@ -267,7 +268,7 @@ decl_module! {
 		fn heartbeat(
 			origin,
 			heartbeat: Heartbeat<T::BlockNumber>,
-			// since signature verification is done in `validate_unsigned_`
+			// since signature verification is done in `CheckImOnline::validate_unsigned`
 			// we can skip doing it here again.
 			_signature: <T::AuthorityId as RuntimeAppPublic>::Signature
 		) {
@@ -584,6 +585,87 @@ impl<T: Trait> pallet_session::OneSessionHandler<T::AccountId> for Module<T> {
 
 	fn on_disabled(_i: usize) {
 		// ignore
+	}
+}
+
+// TODO ASK: Should we use RuntimeDebug instead of Debug?
+// TODO ASK: Also what about Encode, Decode, etc, in some structs we use `feature = "std"`
+/// Checks that ImOnline calls are valid
+#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+pub struct CheckImOnline<T: Trait + Send + Sync>(sp_std::marker::PhantomData<T>);
+
+impl<T: Trait + Send + Sync> Debug for CheckImOnline<T> {
+	#[cfg(feature = "std")]
+	fn fmt(&self, f: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+		write!(f, "CheckImOnline")
+	}
+
+	#[cfg(not(feature = "std"))]
+	fn fmt(&self, _: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+		Ok(())
+	}
+}
+
+impl<T: Trait + Send + Sync> CheckImOnline<T> {
+	/// Create new `CheckImOnline`
+	pub fn new() -> Self {
+		Self(sp_std::marker::PhantomData)
+	}
+}
+
+impl<T: Trait + Send + Sync> SignedExtension for CheckImOnline<T> {
+	type AccountId = T::AccountId;
+	type Call = Call<T>;
+	type AdditionalSigned = ();
+	type DispatchInfo = DispatchInfo;
+	type Pre = ();
+
+	fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
+		Ok(())
+	}
+
+	fn validate_unsigned(call: &Self::Call,
+						 _info: Self::DispatchInfo,
+						 _len: usize,
+	) -> TransactionValidity {
+		if let Call::heartbeat(heartbeat, signature) = call {
+			if <Module<T>>::is_online(heartbeat.authority_index) {
+				// we already received a heartbeat for this authority
+				return InvalidTransaction::Stale.into();
+			}
+
+			// check if session index from heartbeat is recent
+			let current_session = <pallet_session::Module<T>>::current_index();
+			if heartbeat.session_index != current_session {
+				return InvalidTransaction::Stale.into();
+			}
+
+			// verify that the incoming (unverified) pubkey is actually an authority id
+			let keys = Keys::<T>::get();
+			let authority_id = match keys.get(heartbeat.authority_index as usize) {
+				Some(id) => id,
+				None => return InvalidTransaction::BadProof.into(),
+			};
+
+			// check signature (this is expensive so we do it last).
+			let signature_valid = heartbeat.using_encoded(|encoded_heartbeat| {
+				authority_id.verify(&encoded_heartbeat, &signature)
+			});
+
+			if !signature_valid {
+				return InvalidTransaction::BadProof.into();
+			}
+
+			Ok(ValidTransaction {
+				priority: TransactionPriority::max_value(),
+				requires: vec![],
+				provides: vec![(current_session, authority_id).encode()],
+				longevity: TryInto::<u64>::try_into(T::SessionDuration::get() / 2.into()).unwrap_or(64_u64),
+				propagate: true,
+			})
+		} else {
+			InvalidTransaction::Call.into()
+		}
 	}
 }
 
