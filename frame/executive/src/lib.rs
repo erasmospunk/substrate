@@ -355,7 +355,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use codec::Decode; // `super::*` doesn't import `Decode`
 	use sp_core::H256;
+	use sp_std::fmt::Debug;
 	use sp_runtime::{
 		generic::Era, Perbill, DispatchError, testing::{Digest, Header, Block},
 		traits::{Bounded, Header as HeaderT, BlakeTwo256, IdentityLookup, ConvertInto},
@@ -410,6 +412,8 @@ mod tests {
 	type Custom = custom::Module<Runtime>;
 
 	use pallet_balances as balances;
+	use sp_runtime::traits::SignedExtension;
+	use sp_runtime::transaction_validity::ValidTransaction;
 
 	impl_outer_origin! {
 		pub enum Origin for Runtime { }
@@ -485,26 +489,73 @@ mod tests {
 	}
 	impl custom::Trait for Runtime {}
 
+	// TODO ASK: this is not used anywhere in the tests, only to satisfy the trait bounds
 	#[allow(deprecated)]
 	impl ValidateUnsigned for Runtime {
 		type Call = Call;
 
 		fn pre_dispatch_unsigned_(_call: &Self::Call) -> Result<(), TransactionValidityError> {
-			Ok(())
+			unimplemented!(); // TODO remove, put here to check calls in the tests
+//			Ok(())
 		}
 
 		fn validate_unsigned_(call: &Self::Call) -> TransactionValidity {
-			match call {
-				Call::Balances(BalancesCall::set_balance(_, _, _)) => Ok(Default::default()),
-				_ => UnknownTransaction::NoUnsignedValidator.into(),
-			}
+			unimplemented!(); // TODO remove, put here to check calls in the tests
+//			match call {
+//				Call::Balances(BalancesCall::set_balance(_, _, _)) => Ok(Default::default()),
+//				_ => UnknownTransaction::NoUnsignedValidator.into(),
+//			}
 		}
 	}
+
+//	/// Mock unsigned checker
+//	#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+//	pub struct CheckUnsignedMocked<T: frame_system::Trait + Send + Sync>(sp_std::marker::PhantomData<T>);
+//
+//	impl<T: frame_system::Trait + Send + Sync> Debug for CheckUnsignedMocked<T> {
+//		#[cfg(feature = "std")]
+//		fn fmt(&self, f: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+//			write!(f, "CheckUnsignedMocked")
+//		}
+//
+//		#[cfg(not(feature = "std"))]
+//		fn fmt(&self, _: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+//			Ok(())
+//		}
+//	}
+//
+//	impl<T: frame_system::Trait + Send + Sync> CheckUnsignedMocked<T> {
+//		pub fn new() -> Self {
+//			Self(sp_std::marker::PhantomData)
+//		}
+//	}
+//
+//	impl<T: frame_system::Trait + Send + Sync> SignedExtension for CheckUnsignedMocked<T> {
+//		type AccountId = T::AccountId;
+//		type Call = T::Call;
+//		type AdditionalSigned = ();
+//		type DispatchInfo = DispatchInfo;
+//		type Pre = ();
+//
+//		fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
+//			Ok(())
+//		}
+//
+//		fn validate_unsigned(call: &Self::Call, _info: Self::DispatchInfo, _len: usize) -> TransactionValidity {
+////			match call {
+////				Call::Balances(BalancesCall::set_balance(_, _, _)) => Ok(Default::default()),
+////				_ => UnknownTransaction::NoUnsignedValidator.into(),
+////			}
+////			UnknownTransaction::NoUnsignedValidator.into()
+//			Ok(ValidTransaction::default())
+//		}
+//	}
 
 	type SignedExtra = (
 		frame_system::CheckEra<Runtime>,
 		frame_system::CheckNonce<Runtime>,
 		frame_system::CheckWeight<Runtime>,
+//		CheckUnsignedMocked<Runtime>,
 		pallet_transaction_payment::ChargeTransactionPayment<Runtime>
 	);
 	type AllModules = (System, Balances, Custom);
@@ -516,6 +567,7 @@ mod tests {
 			frame_system::CheckEra::from(Era::Immortal),
 			frame_system::CheckNonce::from(nonce),
 			frame_system::CheckWeight::new(),
+//			CheckUnsignedMocked::new(),
 			pallet_transaction_payment::ChargeTransactionPayment::from(fee)
 		)
 	}
