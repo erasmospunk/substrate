@@ -21,6 +21,7 @@ codec = { package = "parity-scale-codec", version = "1.0.0" }
 frame-system = { version = "2.0.0", path = "../../../frame/system" }
 pallet-balances = { version = "2.0.0", path = "../../../frame/balances" }
 pallet-transaction-payment = { version = "2.0.0", path = "../../../frame/transaction-payment" }
+pallet-im-online = { version = "2.0.0", path = "../../../frame/im-online" }
 rpassword = "4.0.1"
 itertools = "0.8.2"
 derive_more = { version = "0.99.2" }

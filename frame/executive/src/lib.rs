@@ -355,13 +355,13 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use codec::Decode; // `super::*` doesn't import `Decode`
+//	use codec::Decode; // `super::*` doesn't import `Decode`
 	use sp_core::H256;
-	use sp_std::fmt::Debug;
+//	use sp_std::fmt::Debug;
 	use sp_runtime::{
 		generic::Era, Perbill, DispatchError, testing::{Digest, Header, Block},
 		traits::{Bounded, Header as HeaderT, BlakeTwo256, IdentityLookup, ConvertInto},
-		transaction_validity::{InvalidTransaction, UnknownTransaction, TransactionValidityError},
+		transaction_validity::{InvalidTransaction, TransactionValidityError},
 	};
 	use frame_support::{
 		impl_outer_event, impl_outer_origin, parameter_types, impl_outer_dispatch,
@@ -412,8 +412,8 @@ mod tests {
 	type Custom = custom::Module<Runtime>;
 
 	use pallet_balances as balances;
-	use sp_runtime::traits::SignedExtension;
-	use sp_runtime::transaction_validity::ValidTransaction;
+//	use sp_runtime::traits::SignedExtension;
+//	use sp_runtime::transaction_validity::ValidTransaction;
 
 	impl_outer_origin! {
 		pub enum Origin for Runtime { }
@@ -499,7 +499,7 @@ mod tests {
 //			Ok(())
 		}
 
-		fn validate_unsigned_(call: &Self::Call) -> TransactionValidity {
+		fn validate_unsigned_(_call: &Self::Call) -> TransactionValidity {
 			unimplemented!(); // TODO remove, put here to check calls in the tests
 //			match call {
 //				Call::Balances(BalancesCall::set_balance(_, _, _)) => Ok(Default::default()),

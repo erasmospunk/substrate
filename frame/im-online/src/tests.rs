@@ -131,8 +131,10 @@ fn heartbeat(
 		.map_err(|e| <&'static str>::from(e))?;
 
 	// TODO ASK: Is `call` created correctly? What about `info` and `len`?
+//	let call: <Runtime as Trait>::Call = crate::Call::heartbeat(heartbeat.clone(), signature.clone()).into();
+
 	CheckImOnline::<Runtime>::pre_dispatch_unsigned(
-		&crate::Call::heartbeat(heartbeat.clone(), signature.clone()),
+		&crate::Call::heartbeat(heartbeat.clone(), signature.clone()).into(),
 		Default::default(), Default::default())
 		.map_err(|e| <&'static str>::from(e))?;
 

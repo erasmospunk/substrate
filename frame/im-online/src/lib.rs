@@ -91,7 +91,7 @@ use sp_staking::{
 };
 use frame_support::{
 	decl_module, decl_event, decl_storage, print, Parameter, debug, decl_error, traits::Get,
-	weights::DispatchInfo,
+	weights::DispatchInfo, IsSubType
 };
 use frame_system::{self as system, ensure_none};
 use frame_system::offchain::SubmitUnsignedTransaction;
@@ -190,7 +190,7 @@ pub trait Trait: frame_system::Trait + pallet_session::historical::Trait {
 	type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
 
 	/// A dispatchable call type.
-	type Call: From<Call<Self>>;
+	type Call: From<Call<Self>> + IsSubType<Module<Self>, Self>;
 
 	/// A transaction submitter.
 	type SubmitTransaction: SubmitUnsignedTransaction<Self, <Self as Trait>::Call>;
@@ -615,7 +615,7 @@ impl<T: Trait + Send + Sync> CheckImOnline<T> {
 
 impl<T: Trait + Send + Sync> SignedExtension for CheckImOnline<T> {
 	type AccountId = T::AccountId;
-	type Call = Call<T>;
+	type Call = <T as Trait>::Call;
 	type AdditionalSigned = ();
 	type DispatchInfo = DispatchInfo;
 	type Pre = ();
@@ -628,6 +628,11 @@ impl<T: Trait + Send + Sync> SignedExtension for CheckImOnline<T> {
 						 _info: Self::DispatchInfo,
 						 _len: usize,
 	) -> TransactionValidity {
+		let call = match call.is_sub_type() {
+			Some(call) => call,
+			None => return Ok(ValidTransaction::default()),
+		};
+
 		if let Call::heartbeat(heartbeat, signature) = call {
 			if <Module<T>>::is_online(heartbeat.authority_index) {
 				// we already received a heartbeat for this authority

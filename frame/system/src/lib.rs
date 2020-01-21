@@ -1252,6 +1252,11 @@ impl<T: Trait + Send + Sync> SignedExtension for CheckUnsigned<T> {
 	fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
 		Ok(())
 	}
+
+	fn validate_unsigned(_call: &Self::Call, _info: Self::DispatchInfo, _len: usize) -> TransactionValidity {
+		Ok(ValidTransaction::default())
+//		UnknownTransaction::NoUnsignedValidator.into()
+	}
 }
 
 pub struct ChainContext<T>(sp_std::marker::PhantomData<T>);
