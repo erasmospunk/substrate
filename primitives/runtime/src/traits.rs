@@ -742,7 +742,7 @@ pub trait SignedExtension: Codec + Debug + Sync + Send + Clone + Eq + PartialEq 
 		_info: Self::DispatchInfo,
 		_len: usize,
 	) -> TransactionValidity {
-		Ok(ValidTransaction::default())
+		UnknownTransaction::NoUnsignedValidator.into()
 	}
 
 	/// Do any pre-flight stuff for a unsigned transaction.
@@ -803,9 +803,32 @@ impl<AccountId, Call, Info: Clone> SignedExtension for Tuple {
 		info: Self::DispatchInfo,
 		len: usize,
 	) -> TransactionValidity {
-		let valid = ValidTransaction::default();
-		for_tuples!( #( let valid = valid.combine_with(Tuple::validate_unsigned(call, info.clone(), len)?); )* );
-		Ok(valid)
+		let mut valid = ValidTransaction::default();
+		let mut some_valid = false;
+		for_tuples!( #(
+			match Tuple::validate_unsigned(call, info.clone(), len) {
+				Ok(valid_tx) => {
+					some_valid = true;
+					valid = valid.combine_with(valid_tx);
+				},
+				Err(err) => {
+					match err {
+						// Ignore if some return NoUnsignedValidator
+						TransactionValidityError::Unknown(
+							UnknownTransaction::NoUnsignedValidator
+						) => {},
+						_ => return Err(err),
+					}
+				},
+			}
+		)* );
+		if some_valid {
+			// If at least one signed extension returned a valid result, return OK
+			Ok(valid)
+		} else {
+			// If all extensions didn't check any unsigned tx, consider it an error
+			UnknownTransaction::NoUnsignedValidator.into()
+		}
 	}
 
 	fn pre_dispatch_unsigned(
@@ -813,7 +836,31 @@ impl<AccountId, Call, Info: Clone> SignedExtension for Tuple {
 		info: Self::DispatchInfo,
 		len: usize,
 	) -> Result<Self::Pre, TransactionValidityError> {
-		Ok(for_tuples!( ( #( Tuple::pre_dispatch_unsigned(call, info.clone(), len)? ),* ) ))
+		let mut some_valid = false;
+		let pre_tuple = for_tuples!( ( #(
+			match Tuple::pre_dispatch_unsigned(call, info.clone(), len) {
+				Ok(pre) => {
+					some_valid = true;
+					pre
+				},
+				Err(err) => {
+					match err {
+						// Use default Pre if some return NoUnsignedValidator
+						TransactionValidityError::Unknown(
+							UnknownTransaction::NoUnsignedValidator
+						) => Tuple::Pre::default(),
+						_ => return Err(err),
+					}
+				},
+			}
+		),* ));
+		if some_valid {
+			// If at least one signed extension returned a valid result, return OK
+			Ok(pre_tuple)
+		} else {
+			// If all extensions didn't check any unsigned tx, consider it an error
+			Err(UnknownTransaction::NoUnsignedValidator.into())
+		}
 	}
 
 	fn post_dispatch(
