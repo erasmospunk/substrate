@@ -756,7 +756,9 @@ pub trait SignedExtension: Codec + Debug + Sync + Send + Clone + Eq + PartialEq 
 		_info: Self::DispatchInfo,
 		_len: usize,
 	) -> TransactionValidity {
+		// TODO make it return "NoUnsignedValidator" by default. For now disable it so the tests don't fail.
 		Ok(ValidTransaction::default())
+		//UnknownTransaction::NoUnsignedValidator.into()
 	}
 
 	/// Do any pre-flight stuff for a unsigned transaction.
@@ -829,9 +831,35 @@ impl<AccountId, Call, Info: Clone> SignedExtension for Tuple {
 		info: Self::DispatchInfo,
 		len: usize,
 	) -> TransactionValidity {
-		let valid = ValidTransaction::default();
-		for_tuples!( #( let valid = valid.combine_with(Tuple::validate_unsigned(call, info.clone(), len)?); )* );
-		Ok(valid)
+		let mut valid = ValidTransaction::default();
+		let mut some_valid = false;
+		/* The following logic applies:
+			- If all return NoUnsignedValidator (none of them did the check),
+  			  it is considered invalid and Err(NoUnsignedValidator) is returned.
+			- If one returns an Err(_), it is considered invalid and that error is
+  			  returned. The first error occurred will be returned.
+			- If at least one returns Ok(_) and no error is returned, it is considered valid.
+		*/
+		for_tuples!( #(
+			match Tuple::validate_unsigned(call, info.clone(), len) {
+				Ok(valid_tx) => {
+					some_valid = true;
+					valid = valid.combine_with(valid_tx);
+				},
+				// Ignore if some return NoUnsignedValidator
+				Err(TransactionValidityError::Unknown(
+					UnknownTransaction::NoUnsignedValidator
+				)) => {},
+				Err(err) => return Err(err),
+			}
+		)* );
+		if some_valid {
+			// If at least one signed extension returned a valid result, return OK
+			Ok(valid)
+		} else {
+			// If all extensions didn't check any unsigned tx, consider it an error
+			UnknownTransaction::NoUnsignedValidator.into()
+		}
 	}
 
 	fn pre_dispatch_unsigned(
@@ -839,7 +867,35 @@ impl<AccountId, Call, Info: Clone> SignedExtension for Tuple {
 		info: Self::DispatchInfo,
 		len: usize,
 	) -> Result<Self::Pre, TransactionValidityError> {
-		Ok(for_tuples!( ( #( Tuple::pre_dispatch_unsigned(call, info.clone(), len)? ),* ) ))
+		let mut some_valid = false;
+		/* The following logic applies:
+			- If all return NoUnsignedValidator (none of them did the check),
+			  it is considered invalid and Err(NoUnsignedValidator) is returned.
+			- If one returns an Err(_), it is considered invalid and that error is
+			  returned. The first error occurred will be returned.
+			- If at least one returns Ok(_) and no error is returned, it is considered valid.
+			  For any NoUnsignedValidator a SignedExtension returned we create a default Pre
+		*/
+		let pre_tuple = for_tuples!( ( #(
+			match Tuple::pre_dispatch_unsigned(call, info.clone(), len) {
+				Ok(pre) => {
+					some_valid = true;
+					pre
+				},
+				// Use default Pre if some return NoUnsignedValidator
+				Err(TransactionValidityError::Unknown(
+					UnknownTransaction::NoUnsignedValidator
+				)) => Tuple::Pre::default(),
+				Err(err) => return Err(err),
+			}
+		),* ));
+		if some_valid {
+			// If at least one signed extension returned a valid result, return OK
+			Ok(pre_tuple)
+		} else {
+			// If all extensions didn't check any unsigned tx, consider it an error
+			Err(UnknownTransaction::NoUnsignedValidator.into())
+		}
 	}
 
 	fn post_dispatch(
@@ -1319,6 +1375,7 @@ mod tests {
 	use super::*;
 	use crate::codec::{Encode, Decode, Input};
 	use sp_core::{crypto::Pair, ecdsa};
+	use crate::transaction_validity::InvalidTransaction;
 
 	mod t {
 		use sp_core::crypto::KeyTypeId;
@@ -1409,5 +1466,99 @@ mod tests {
 
 		assert!(signature.verify(msg, &pair.public()));
 		assert!(signature.verify(msg, &pair.public()));
+	}
+
+	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd)]
+	struct CheckMockUnchecked;
+	impl SignedExtension for CheckMockUnchecked {
+		type AccountId = u64;
+		type Call = ();
+		type AdditionalSigned = ();
+		type Pre = ();
+		type DispatchInfo = ();
+
+		fn additional_signed(&self) -> sp_std::result::Result<(), TransactionValidityError> { Ok(()) }
+
+		// TODO remove once SignedExtension::validate_unsigned returns error by default
+		fn validate_unsigned(
+			_call: &Self::Call,
+			_info: Self::DispatchInfo,
+			_len: usize
+		) -> Result<ValidTransaction, TransactionValidityError> {
+			UnknownTransaction::NoUnsignedValidator.into()
+		}
+	}
+
+	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd)]
+	struct CheckMockChecked;
+	impl SignedExtension for CheckMockChecked {
+		type AccountId = u64;
+		type Call = ();
+		type AdditionalSigned = ();
+		type Pre = ();
+		type DispatchInfo = ();
+
+		fn additional_signed(&self) -> sp_std::result::Result<(), TransactionValidityError> { Ok(()) }
+
+		fn validate_unsigned(
+			_call: &Self::Call,
+			_info: Self::DispatchInfo,
+			_len: usize
+		) -> Result<ValidTransaction, TransactionValidityError> {
+			Ok(ValidTransaction::default())
+		}
+	}
+
+	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd)]
+	struct CheckMockFailing;
+	impl SignedExtension for CheckMockFailing {
+		type AccountId = u64;
+		type Call = ();
+		type AdditionalSigned = ();
+		type Pre = ();
+		type DispatchInfo = ();
+
+		fn additional_signed(&self) -> sp_std::result::Result<(), TransactionValidityError> { Ok(()) }
+
+		fn validate_unsigned(
+			_call: &Self::Call,
+			_info: Self::DispatchInfo,
+			_len: usize
+		) -> Result<ValidTransaction, TransactionValidityError> {
+			InvalidTransaction::Call.into()
+		}
+	}
+
+	#[test]
+	fn check_unsigned_for_tuples() {
+		// Check that when there is a least one SignedExtension that implements validate_unsigned
+		// and returns Ok(), then the result is Ok() as well
+		assert_eq!(Ok(ValidTransaction::default()),
+				   <(CheckMockChecked,
+					 CheckMockUnchecked)>::validate_unsigned(&(), (), 0));
+		assert_eq!(Ok(ValidTransaction::default()),
+				   <(CheckMockUnchecked,
+					 CheckMockUnchecked,
+					 CheckMockChecked)>::validate_unsigned(&(), (), 0));
+		assert_eq!(Ok(ValidTransaction::default()),
+				   <(CheckMockUnchecked,
+					 CheckMockChecked,
+					 CheckMockUnchecked,
+					 CheckMockChecked)>::validate_unsigned(&(), (), 0));
+		// Check that we get NoUnsignedValidator if all SignedExtension did not implement
+		// validate_unsigned
+		assert_eq!(Err(UnknownTransaction::NoUnsignedValidator.into()),
+				   <(CheckMockUnchecked,
+					 CheckMockUnchecked,
+					 CheckMockUnchecked)>::validate_unsigned(&(), (), 0));
+		// Check that we get the correct error when one SignedExtension fails
+		assert_eq!(Err(InvalidTransaction::Call.into()),
+				   <(CheckMockUnchecked,
+					 CheckMockFailing,
+					 CheckMockUnchecked)>::validate_unsigned(&(), (), 0));
+		assert_eq!(Err(InvalidTransaction::Call.into()),
+				   <(CheckMockChecked,
+					 CheckMockFailing,
+					 CheckMockUnchecked)>::validate_unsigned(&(), (), 0));
 	}
 }
