@@ -369,10 +369,12 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use codec::Decode; // `super::*` doesn't import `Decode`
 	use sp_core::H256;
+	use sp_std::fmt::Debug;
 	use sp_runtime::{
 		generic::Era, Perbill, DispatchError, testing::{Digest, Header, Block},
-		traits::{Header as HeaderT, BlakeTwo256, IdentityLookup, ConvertInto},
+		traits::{Header as HeaderT, BlakeTwo256, IdentityLookup, ConvertInto, SignedExtension},
 		transaction_validity::{InvalidTransaction, UnknownTransaction, TransactionValidityError},
 	};
 	use frame_support::{
@@ -511,10 +513,53 @@ mod tests {
 		}
 	}
 
+	/// Mock unsigned checker
+	#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+	pub struct CheckUnsignedMocked<T: frame_system::Trait + Send + Sync>(sp_std::marker::PhantomData<T>);
+
+	impl<T: frame_system::Trait + Send + Sync> Debug for CheckUnsignedMocked<T> {
+		#[cfg(feature = "std")]
+		fn fmt(&self, f: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+			write!(f, "CheckUnsignedMocked")
+		}
+
+		#[cfg(not(feature = "std"))]
+		fn fmt(&self, _: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+			Ok(())
+		}
+	}
+
+	impl<T: frame_system::Trait + Send + Sync> CheckUnsignedMocked<T> {
+		pub fn new() -> Self {
+			Self(sp_std::marker::PhantomData)
+		}
+	}
+
+	impl<T: frame_system::Trait + Send + Sync> SignedExtension for CheckUnsignedMocked<T> {
+		const IDENTIFIER: &'static str = "CheckUnsignedMocked";
+		type AccountId = T::AccountId;
+		type Call = Call;
+		type AdditionalSigned = ();
+		type Pre = ();
+		type DispatchInfo = DispatchInfo;
+
+		fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
+			Ok(())
+		}
+
+		fn validate_unsigned(call: &Self::Call, _info: Self::DispatchInfo, _len: usize) -> TransactionValidity {
+			match call {
+				Call::Balances(BalancesCall::set_balance(_, _, _)) => Ok(Default::default()),
+				_ => UnknownTransaction::NoUnsignedValidator.into(),
+			}
+		}
+	}
+
 	type SignedExtra = (
 		frame_system::CheckEra<Runtime>,
 		frame_system::CheckNonce<Runtime>,
 		frame_system::CheckWeight<Runtime>,
+		CheckUnsignedMocked<Runtime>,
 		pallet_transaction_payment::ChargeTransactionPayment<Runtime>
 	);
 	type AllModules = (System, Balances, Custom);
@@ -526,6 +571,7 @@ mod tests {
 			frame_system::CheckEra::from(Era::Immortal),
 			frame_system::CheckNonce::from(nonce),
 			frame_system::CheckWeight::new(),
+			CheckUnsignedMocked::new(),
 			pallet_transaction_payment::ChargeTransactionPayment::from(fee)
 		)
 	}

@@ -18,6 +18,7 @@ codec = { package = "parity-scale-codec", version = "1.0.0" }
 pallet-contracts = { version = "2.0.0-alpha.2", path = "../../../frame/contracts" }
 pallet-grandpa = { version = "2.0.0-alpha.2", path = "../../../frame/grandpa" }
 pallet-indices = { version = "2.0.0-alpha.2", path = "../../../frame/indices" }
+pallet-im-online = { version = "2.0.0-alpha.2", path = "../../../frame/im-online" }
 sp-keyring = { version = "2.0.0-alpha.2", path = "../../../primitives/keyring" }
 node-executor = { version = "2.0.0-alpha.2", path = "../executor" }
 node-primitives = { version = "2.0.0-alpha.2", path = "../primitives" }

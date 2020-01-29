@@ -756,9 +756,7 @@ pub trait SignedExtension: Codec + Debug + Sync + Send + Clone + Eq + PartialEq 
 		_info: Self::DispatchInfo,
 		_len: usize,
 	) -> TransactionValidity {
-		// TODO make it return "NoUnsignedValidator" by default. For now disable it so the tests don't fail.
-		Ok(ValidTransaction::default())
-		//UnknownTransaction::NoUnsignedValidator.into()
+		UnknownTransaction::NoUnsignedValidator.into()
 	}
 
 	/// Do any pre-flight stuff for a unsigned transaction.
@@ -1471,6 +1469,7 @@ mod tests {
 	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd)]
 	struct CheckMockUnchecked;
 	impl SignedExtension for CheckMockUnchecked {
+		const IDENTIFIER: &'static str = "CheckMockUnchecked";
 		type AccountId = u64;
 		type Call = ();
 		type AdditionalSigned = ();
@@ -1478,20 +1477,12 @@ mod tests {
 		type DispatchInfo = ();
 
 		fn additional_signed(&self) -> sp_std::result::Result<(), TransactionValidityError> { Ok(()) }
-
-		// TODO remove once SignedExtension::validate_unsigned returns error by default
-		fn validate_unsigned(
-			_call: &Self::Call,
-			_info: Self::DispatchInfo,
-			_len: usize
-		) -> Result<ValidTransaction, TransactionValidityError> {
-			UnknownTransaction::NoUnsignedValidator.into()
-		}
 	}
 
 	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd)]
 	struct CheckMockChecked;
 	impl SignedExtension for CheckMockChecked {
+		const IDENTIFIER: &'static str = "CheckMockChecked";
 		type AccountId = u64;
 		type Call = ();
 		type AdditionalSigned = ();
@@ -1512,6 +1503,7 @@ mod tests {
 	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd)]
 	struct CheckMockFailing;
 	impl SignedExtension for CheckMockFailing {
+		const IDENTIFIER: &'static str = "CheckMockFailing";
 		type AccountId = u64;
 		type Call = ();
 		type AdditionalSigned = ();
