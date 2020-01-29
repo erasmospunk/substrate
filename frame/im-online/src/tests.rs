@@ -129,6 +129,12 @@ fn heartbeat(
 	#[allow(deprecated)] // Allow ValidateUnsigned
 	ImOnline::pre_dispatch(&crate::Call::heartbeat(heartbeat.clone(), signature.clone()))
 		.map_err(|e| <&'static str>::from(e))?;
+
+	CheckImOnline::<Runtime>::pre_dispatch_unsigned(
+		&crate::Call::heartbeat(heartbeat.clone(), signature.clone()).into(),
+		Default::default(), Default::default())
+		.map_err(|e| <&'static str>::from(e))?;
+
 	ImOnline::heartbeat(
 		Origin::system(frame_system::RawOrigin::None),
 		heartbeat,
