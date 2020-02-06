@@ -34,6 +34,7 @@ use sp_trie::trie_types::{TrieDB, TrieDBMut};
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
 use sp_runtime::{
 	ApplyExtrinsicResult, create_runtime_str, Perbill, impl_opaque_keys,
+	generic::ExtrinsicSignature,
 	transaction_validity::{
 		TransactionValidity, ValidTransaction, TransactionValidityError, InvalidTransaction,
 	},
@@ -154,7 +155,8 @@ impl ExtrinsicT for Extrinsic {
 		}
 	}
 
-	fn new(call: Self::Call, _signature_payload: Option<Self::SignaturePayload>) -> Option<Self> {
+	fn new(call: Self::Call,
+		   _signature_payload: ExtrinsicSignature<Self::SignaturePayload>) -> Option<Self> {
 		Some(call)
 	}
 }

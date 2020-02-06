@@ -36,7 +36,7 @@ pub use self::digest::{
 	Digest, DigestItem, DigestItemRef, OpaqueDigestItemId, ChangesTrieSignal,
 };
 
-use crate::codec::Encode;
+use crate::codec::{Encode, Decode};
 use sp_std::prelude::*;
 
 fn encode_with_vec_prefix<T: Encode, F: Fn(&mut Vec<u8>)>(encoder: F) -> Vec<u8> {
@@ -59,4 +59,26 @@ fn encode_with_vec_prefix<T: Encode, F: Fn(&mut Vec<u8>)>(encoder: F) -> Vec<u8>
 	});
 
 	v
+}
+
+//#[derive(Clone, PartialEq, Eq, Encode, Decode, sp_runtime::RuntimeDebug)]
+#[derive(Clone, PartialEq, Eq, Encode, Decode, Debug)]
+//#[derive(Clone, PartialEq, Eq, Encode, Decode)]
+pub enum ExtrinsicSignature<T> {
+	/// Inherent extrinsic, no signature of any kind
+	Inherent,
+	/// Normal signed extrinsic
+	Normal(T),
+	/// Signed extrinsic by a proxy key (may not require fees to propagate)
+	Detached,
+}
+
+impl<T> ExtrinsicSignature<T> {
+	pub fn as_ref(&self) -> ExtrinsicSignature<&T> {
+		match *self {
+			ExtrinsicSignature::Inherent => ExtrinsicSignature::Inherent,
+			ExtrinsicSignature::Normal(ref r) => ExtrinsicSignature::Normal(r),
+			ExtrinsicSignature::Detached => ExtrinsicSignature::Detached,
+		}
+	}
 }

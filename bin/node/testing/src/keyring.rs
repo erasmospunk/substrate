@@ -19,8 +19,13 @@
 use sp_keyring::{AccountKeyring, Sr25519Keyring, Ed25519Keyring};
 use node_primitives::{AccountId, Balance, Index};
 use node_runtime::{CheckedExtrinsic, UncheckedExtrinsic, SessionKeys, SignedExtra};
-use sp_runtime::generic::Era;
+use sp_runtime::generic::{Era, ExtrinsicSignature};
 use codec::Encode;
+use pallet_im_online::CheckImOnline;
+use frame_system::{CheckVersion, CheckWeight, CheckGenesis, CheckEra, CheckNonce};
+use sp_core::crypto::AccountId32;
+use pallet_transaction_payment::ChargeTransactionPayment;
+use pallet_contracts::CheckBlockGasLimit;
 
 /// Alice's account id.
 pub fn alice() -> AccountId {
@@ -82,7 +87,11 @@ pub fn signed_extra(nonce: Index, extra_fee: Balance) -> SignedExtra {
 /// Sign given `CheckedExtrinsic`.
 pub fn sign(xt: CheckedExtrinsic, version: u32, genesis_hash: [u8; 32]) -> UncheckedExtrinsic {
 	match xt.signed {
-		Some((signed, extra)) => {
+		ExtrinsicSignature::Detached => UncheckedExtrinsic {
+			signature: ExtrinsicSignature::Detached,
+			function: xt.function,
+		},
+		ExtrinsicSignature::Normal((signed, extra)) => {
 			let payload = (xt.function, extra.clone(), version, genesis_hash, genesis_hash);
 			let key = AccountKeyring::from_account_id(&signed).unwrap();
 			let signature = payload.using_encoded(|b| {
@@ -93,13 +102,12 @@ pub fn sign(xt: CheckedExtrinsic, version: u32, genesis_hash: [u8; 32]) -> Unche
 				}
 			}).into();
 			UncheckedExtrinsic {
-				signature: Some((pallet_indices::address::Address::Id(signed), signature, extra)),
+				signature: ExtrinsicSignature::Normal(
+					(pallet_indices::address::Address::Id(signed), signature, extra)
+				),
 				function: payload.0,
 			}
 		}
-		None => UncheckedExtrinsic {
-			signature: None,
-			function: xt.function,
-		},
+		ExtrinsicSignature::Inherent => todo!("Inherent type"),
 	}
 }

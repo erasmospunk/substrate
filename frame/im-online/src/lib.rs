@@ -628,10 +628,11 @@ impl<T: Trait + Send + Sync> SignedExtension for CheckImOnline<T> {
 						 _info: Self::DispatchInfo,
 						 _len: usize,
 	) -> TransactionValidity {
-//		let call = match call.is_sub_type() {
-//			Some(call) => call,
-//			None => return UnknownTransaction::NoUnsignedValidator.into(),
-//		};
+		let call = match call.is_sub_type() {
+			Some(call) => call,
+			None => return UnknownTransaction::NoUnsignedValidator.into(),
+//			None => return Ok(ValidTransaction::default()),
+		};
 
 		if let Call::heartbeat(heartbeat, signature) = call {
 			if <Module<T>>::is_online(heartbeat.authority_index) {

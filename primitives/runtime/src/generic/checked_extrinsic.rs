@@ -23,6 +23,7 @@ use crate::traits::{
 #[allow(deprecated)]
 use crate::traits::ValidateUnsigned;
 use crate::transaction_validity::TransactionValidity;
+use crate::generic::ExtrinsicSignature;
 
 /// Definition of something that the external world might want to say; its
 /// existence implies that it has been checked and is good, particularly with
@@ -31,7 +32,7 @@ use crate::transaction_validity::TransactionValidity;
 pub struct CheckedExtrinsic<AccountId, Call, Extra> {
 	/// Who this purports to be from and the number of extrinsics have come before
 	/// from the same signer, if anyone (note this is not a signature).
-	pub signed: Option<(AccountId, Extra)>,
+	pub signed: ExtrinsicSignature<(AccountId, Extra)>,
 
 	/// The function that should be called.
 	pub function: Call,
@@ -51,7 +52,11 @@ where
 	type DispatchInfo = Info;
 
 	fn sender(&self) -> Option<&Self::AccountId> {
-		self.signed.as_ref().map(|x| &x.0)
+//		self.signed.as_ref().map(|x| &x.0)
+		match self.signed.as_ref() {
+			ExtrinsicSignature::Normal((a, _)) => Some(a),
+			_ => None,
+		}
 	}
 
 	#[allow(deprecated)] // Allow ValidateUnsigned
@@ -60,12 +65,19 @@ where
 		info: Self::DispatchInfo,
 		len: usize,
 	) -> TransactionValidity {
-		if let Some((ref id, ref extra)) = self.signed {
-			Extra::validate(extra, id, &self.function, info.clone(), len)
-		} else {
-			let valid = Extra::validate_unsigned(&self.function, info, len)?;
-			let unsigned_validation = U::validate_unsigned(&self.function)?;
-			Ok(valid.combine_with(unsigned_validation))
+		match self.signed {
+			ExtrinsicSignature::Inherent => {
+				// TODO what we do when validating an inherent?
+				todo!("Inherent type")
+			},
+			ExtrinsicSignature::Normal((ref id, ref extra)) => {
+				Extra::validate(extra, id, &self.function, info.clone(), len)
+			},
+			ExtrinsicSignature::Detached => {
+				let valid = Extra::validate_unsigned(&self.function, info, len)?;
+				let unsigned_validation = U::validate_unsigned(&self.function)?;
+				Ok(valid.combine_with(unsigned_validation))
+			},
 		}
 	}
 
@@ -75,13 +87,20 @@ where
 		info: Self::DispatchInfo,
 		len: usize,
 	) -> crate::ApplyExtrinsicResult {
-		let (maybe_who, pre) = if let Some((id, extra)) = self.signed {
-			let pre = Extra::pre_dispatch(extra, &id, &self.function, info.clone(), len)?;
-			(Some(id), pre)
-		} else {
-			let pre = Extra::pre_dispatch_unsigned(&self.function, info.clone(), len)?;
-			U::pre_dispatch(&self.function)?;
-			(None, pre)
+		let (maybe_who, pre) = match self.signed {
+			ExtrinsicSignature::Inherent => {
+				// TODO what we do when applying an inherent?
+				todo!("Inherent type")
+			},
+			ExtrinsicSignature::Normal((id, extra)) => {
+				let pre = Extra::pre_dispatch(extra, &id, &self.function, info.clone(), len)?;
+				(Some(id), pre)
+			},
+			ExtrinsicSignature::Detached => {
+				let pre = Extra::pre_dispatch_unsigned(&self.function, info.clone(), len)?;
+				U::pre_dispatch(&self.function)?;
+				(None, pre)
+			},
 		};
 		let res = self.function.dispatch(Origin::from(maybe_who));
 		Extra::post_dispatch(pre, info.clone(), len);

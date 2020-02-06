@@ -25,6 +25,7 @@ pub use sp_application_crypto;
 
 pub use sp_core::{hash::H256, RuntimeDebug};
 use sp_runtime::traits::{BlakeTwo256, Verify, Extrinsic as ExtrinsicT,};
+use sp_runtime::generic::ExtrinsicSignature;
 
 /// Extrinsic for test-runtime.
 #[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug)]
@@ -52,7 +53,9 @@ impl ExtrinsicT for Extrinsic {
 		}
 	}
 
-	fn new(call: Self::Call, _signature_payload: Option<Self::SignaturePayload>) -> Option<Self> {
+	fn new(call: Self::Call,
+		   _signature_payload: ExtrinsicSignature<Self::SignaturePayload>
+	) -> Option<Self> {
 		Some(call)
 	}
 }

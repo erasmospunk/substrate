@@ -21,10 +21,14 @@ use sp_io::hashing::blake2_256;
 use codec::{Decode, Encode, EncodeLike, Input, Error};
 use crate::{
 	traits::{self, Member, MaybeDisplay, SignedExtension, Checkable, Extrinsic, IdentifyAccount},
-	generic::CheckedExtrinsic, transaction_validity::{TransactionValidityError, InvalidTransaction},
+	generic::{CheckedExtrinsic, ExtrinsicSignature},
+	transaction_validity::{TransactionValidityError, InvalidTransaction},
 };
 
+const TX_IS_SIGNED_MASK: u8 = 0b1000_0000;
+const TX_VERSION_MASK: u8 = 0b0111_1111;
 const TRANSACTION_VERSION: u8 = 4;
+const TX_VERSION_DETACHED: u8 = 5;
 
 /// A extrinsic right from the external world. This is unchecked and so
 /// can contain a signature.
@@ -36,7 +40,7 @@ where
 	/// The signature, address, number of extrinsics have come before from
 	/// the same signer and an era describing the longevity of this transaction,
 	/// if this is a signed extrinsic.
-	pub signature: Option<(Address, Signature, Extra)>,
+	pub signature: ExtrinsicSignature<(Address, Signature, Extra)>,
 	/// The function that should be called.
 	pub function: Call,
 }
@@ -44,6 +48,14 @@ where
 impl<Address, Call, Signature, Extra: SignedExtension>
 	UncheckedExtrinsic<Address, Call, Signature, Extra>
 {
+	/// New instance of an inherent extrinsic
+	pub fn new_inherent(function: Call) -> Self {
+		UncheckedExtrinsic {
+			signature: ExtrinsicSignature::Inherent,
+			function,
+		}
+	}
+
 	/// New instance of a signed extrinsic aka "transaction".
 	pub fn new_signed(
 		function: Call,
@@ -52,15 +64,21 @@ impl<Address, Call, Signature, Extra: SignedExtension>
 		extra: Extra
 	) -> Self {
 		UncheckedExtrinsic {
-			signature: Some((signed, signature, extra)),
+			signature: ExtrinsicSignature::Normal((signed, signature, extra)),
 			function,
 		}
 	}
 
 	/// New instance of an unsigned extrinsic aka "inherent".
+	#[deprecated(note = "Use ::new_inherent instead")]
 	pub fn new_unsigned(function: Call) -> Self {
+		Self::new_inherent(function)
+	}
+
+	/// New instance of an detached extrinsic
+	pub fn new_detached(function: Call) -> Self {
 		UncheckedExtrinsic {
-			signature: None,
+			signature: ExtrinsicSignature::Detached,
 			function,
 		}
 	}
@@ -78,14 +96,27 @@ impl<Address, Call, Signature, Extra: SignedExtension> Extrinsic
 	);
 
 	fn is_signed(&self) -> Option<bool> {
-		Some(self.signature.is_some())
+		Some(match self.signature {
+			ExtrinsicSignature::Inherent => false,
+			ExtrinsicSignature::Normal(_) => true,
+			// TODO ASK should we consider a this signed as well?
+			ExtrinsicSignature::Detached => false,
+		})
 	}
 
-	fn new(function: Call, signed_data: Option<Self::SignaturePayload>) -> Option<Self> {
-		Some(if let Some((address, signature, extra)) = signed_data {
-			UncheckedExtrinsic::new_signed(function, address, signature, extra)
-		} else {
-			UncheckedExtrinsic::new_unsigned(function)
+	fn new(function: Call,
+		   signed_data: ExtrinsicSignature<Self::SignaturePayload>) -> Option<Self>
+	{
+		Some(match signed_data {
+			ExtrinsicSignature::Inherent => {
+				UncheckedExtrinsic::new_inherent(function)
+			},
+			ExtrinsicSignature::Normal((address, signature, extra)) => {
+				UncheckedExtrinsic::new_signed(function, address, signature, extra)
+			},
+			ExtrinsicSignature::Detached => {
+				UncheckedExtrinsic::new_detached(function)
+			},
 		})
 	}
 }
@@ -107,7 +138,11 @@ where
 
 	fn check(self, lookup: &Lookup) -> Result<Self::Checked, TransactionValidityError> {
 		Ok(match self.signature {
-			Some((signed, signature, extra)) => {
+			ExtrinsicSignature::Inherent => CheckedExtrinsic {
+				signed: ExtrinsicSignature::Inherent,
+				function: self.function,
+			},
+			ExtrinsicSignature::Normal((signed, signature, extra)) => {
 				let signed = lookup.lookup(signed)?;
 				let raw_payload = SignedPayload::new(self.function, extra)?;
 				if !raw_payload.using_encoded(|payload| {
@@ -118,12 +153,12 @@ where
 
 				let (function, extra, _) = raw_payload.deconstruct();
 				CheckedExtrinsic {
-					signed: Some((signed, extra)),
+					signed: ExtrinsicSignature::Normal((signed, extra)),
 					function,
 				}
-			}
-			None => CheckedExtrinsic {
-				signed: None,
+			},
+			ExtrinsicSignature::Detached => CheckedExtrinsic {
+				signed: ExtrinsicSignature::Detached,
 				function: self.function,
 			},
 		})
@@ -206,14 +241,30 @@ where
 
 		let version = input.read_byte()?;
 
-		let is_signed = version & 0b1000_0000 != 0;
-		let version = version & 0b0111_1111;
-		if version != TRANSACTION_VERSION {
+		/* TODO review the tx version format
+		   We keep the TX_IS_SIGNED_MASK bit to encode signed transactions,
+		   both "normal" and "delegate" (previously were called "unsigned")
+
+		*/
+		let is_signed = version & TX_IS_SIGNED_MASK != 0;
+		let version = version & TX_VERSION_MASK;
+		if version != TRANSACTION_VERSION || version != TX_VERSION_DETACHED {
 			return Err("Invalid transaction version".into());
 		}
 
 		Ok(UncheckedExtrinsic {
-			signature: if is_signed { Some(Decode::decode(input)?) } else { None },
+			signature: if is_signed {
+				match version {
+					TRANSACTION_VERSION => ExtrinsicSignature::Normal(Decode::decode(input)?),
+					TX_VERSION_DETACHED => ExtrinsicSignature::Detached,
+					_ => return Err("Invalid transaction version for signed transaction".into()),
+				}
+			} else {
+				if version != TRANSACTION_VERSION {
+					return Err("Invalid (inherent) transaction version".into());
+				}
+				ExtrinsicSignature::Inherent
+			},
 			function: Decode::decode(input)?,
 		})
 	}
@@ -231,13 +282,16 @@ where
 		super::encode_with_vec_prefix::<Self, _>(|v| {
 			// 1 byte version id.
 			match self.signature.as_ref() {
-				Some(s) => {
-					v.push(TRANSACTION_VERSION | 0b1000_0000);
+				ExtrinsicSignature::Inherent => {
+					v.push(TRANSACTION_VERSION & TX_VERSION_MASK);
+				},
+				ExtrinsicSignature::Normal(s) => {
+					v.push(TRANSACTION_VERSION | TX_IS_SIGNED_MASK);
 					s.encode_to(v);
-				}
-				None => {
-					v.push(TRANSACTION_VERSION & 0b0111_1111);
-				}
+				},
+				ExtrinsicSignature::Detached => {
+					v.push(TX_VERSION_DETACHED | TX_IS_SIGNED_MASK);
+				},
 			}
 			self.function.encode_to(v);
 		})
@@ -270,10 +324,20 @@ where
 	Extra: SignedExtension,
 {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		// TODO implement debug printing
+//		let kind = match self.signature.as_ref() {
+//			ExtrinsicSignature::Unsigned => (),
+//			ExtrinsicSignature::Signed(_) => (),
+//			ExtrinsicSignature::Inherent => (),
+//		};
+//		(a, _, e)
+//		let r = self.signature.as_ref();
+		let kind = "TODO";
 		write!(
 			f,
 			"UncheckedExtrinsic({:?}, {:?})",
-			self.signature.as_ref().map(|x| (&x.0, &x.2)),
+//			self.signature.as_ref().map(|x| (&x.0, &x.2)),
+			kind,
 			self.function,
 		)
 	}
@@ -330,7 +394,7 @@ mod tests {
 
 	#[test]
 	fn unsigned_codec_should_work() {
-		let ux = Ex::new_unsigned(vec![0u8; 0]);
+		let ux = Ex::new_inherent(vec![0u8; 0]);
 		let encoded = ux.encode();
 		assert_eq!(Ex::decode(&mut &encoded[..]), Ok(ux));
 	}
@@ -362,7 +426,7 @@ mod tests {
 
 	#[test]
 	fn unsigned_check_should_work() {
-		let ux = Ex::new_unsigned(vec![0u8; 0]);
+		let ux = Ex::new_inherent(vec![0u8; 0]);
 		assert!(!ux.is_signed().unwrap_or(false));
 		assert!(<Ex as Checkable<TestContext>>::check(ux, &Default::default()).is_ok());
 	}
@@ -399,7 +463,7 @@ mod tests {
 
 	#[test]
 	fn encoding_matches_vec() {
-		let ex = Ex::new_unsigned(vec![0u8; 0]);
+		let ex = Ex::new_inherent(vec![0u8; 0]);
 		let encoded = ex.encode();
 		let decoded = Ex::decode(&mut encoded.as_slice()).unwrap();
 		assert_eq!(decoded, ex);

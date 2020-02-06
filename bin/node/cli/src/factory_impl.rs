@@ -37,6 +37,12 @@ use node_transaction_factory::modes::Mode;
 use sp_inherents::InherentData;
 use sp_timestamp;
 use sp_finality_tracker;
+use pallet_im_online::CheckImOnline;
+use frame_system::{CheckVersion, CheckWeight, CheckGenesis, CheckEra, CheckNonce};
+use sp_core::crypto::AccountId32;
+use sp_runtime::generic::ExtrinsicSignature;
+use pallet_transaction_payment::ChargeTransactionPayment;
+use pallet_contracts::CheckBlockGasLimit;
 
 type AccountPublic = <Signature as Verify>::Signer;
 
@@ -147,7 +153,7 @@ impl RuntimeAdapter for FactoryState<Number> {
 		let index = self.extract_index(&sender, prior_block_hash);
 		let phase = self.extract_phase(*prior_block_hash);
 		sign::<Self>(CheckedExtrinsic {
-			signed: Some((sender.clone(), Self::build_extra(index, phase))),
+			signed: ExtrinsicSignature::Normal((sender.clone(), Self::build_extra(index, phase))),
 			function: Call::Balances(
 				BalancesCall::transfer(
 					pallet_indices::address::Address::Id(destination.clone().into()),
@@ -244,7 +250,11 @@ fn sign<RA: RuntimeAdapter>(
 	additional_signed: <SignedExtra as SignedExtension>::AdditionalSigned,
 ) -> <RA::Block as BlockT>::Extrinsic {
 	let s = match xt.signed {
-		Some((signed, extra)) => {
+		ExtrinsicSignature::Inherent => UncheckedExtrinsic {
+			signature: ExtrinsicSignature::Inherent,
+			function: xt.function,
+		},
+		ExtrinsicSignature::Normal((signed, extra)) => {
 			let payload = (xt.function, extra.clone(), additional_signed);
 			let signature = payload.using_encoded(|b| {
 				if b.len() > 256 {
@@ -254,14 +264,13 @@ fn sign<RA: RuntimeAdapter>(
 				}
 			}).into();
 			UncheckedExtrinsic {
-				signature: Some((pallet_indices::address::Address::Id(signed), signature, extra)),
+				signature: ExtrinsicSignature::Normal(
+					(pallet_indices::address::Address::Id(signed), signature, extra)
+				),
 				function: payload.0,
 			}
-		}
-		None => UncheckedExtrinsic {
-			signature: None,
-			function: xt.function,
 		},
+		ExtrinsicSignature::Detached => todo!("unsigned tx type"),
 	};
 
 	let e = Encode::encode(&s);

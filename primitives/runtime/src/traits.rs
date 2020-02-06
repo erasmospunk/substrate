@@ -28,7 +28,7 @@ use crate::codec::{Codec, Encode, Decode};
 use crate::transaction_validity::{
 	ValidTransaction, TransactionValidity, TransactionValidityError, UnknownTransaction,
 };
-use crate::generic::{Digest, DigestItem};
+use crate::generic::{Digest, DigestItem, ExtrinsicSignature};
 pub use sp_arithmetic::traits::{
 	SimpleArithmetic, UniqueSaturatedInto, UniqueSaturatedFrom, Saturating, SaturatedConversion,
 	Zero, One, Bounded, CheckedAdd, CheckedSub, CheckedMul, CheckedDiv,
@@ -605,7 +605,9 @@ pub trait Extrinsic: Sized {
 	/// 1. Inherents (no signature; created by validators during block production)
 	/// 2. Unsigned Transactions (no signature; represent "system calls" or other special kinds of calls)
 	/// 3. Signed Transactions (with signature; a regular transactions with known origin)
-	fn new(_call: Self::Call, _signed_data: Option<Self::SignaturePayload>) -> Option<Self> { None }
+	fn new(_call: Self::Call,
+		   _signed_data: ExtrinsicSignature<Self::SignaturePayload>
+	) -> Option<Self> { None }
 }
 
 /// Extract the hasher type for a block.

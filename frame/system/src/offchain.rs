@@ -20,6 +20,7 @@ use codec::Encode;
 use sp_std::convert::TryInto;
 use sp_std::prelude::Vec;
 use sp_runtime::app_crypto::{RuntimeAppPublic, AppPublic, AppSignature};
+use sp_runtime::generic::ExtrinsicSignature;
 use sp_runtime::traits::{Extrinsic as ExtrinsicT, IdentifyAccount};
 use frame_support::debug;
 
@@ -142,7 +143,7 @@ pub trait SignAndSubmitTransaction<T: crate::Trait, Call> {
 		// be running in off-chain context, so we NEVER persists data.
 		<crate::Module<T>>::inc_account_nonce(&id);
 
-		let xt = Self::Extrinsic::new(call, Some(signature_data)).ok_or(())?;
+		let xt = Self::Extrinsic::new(call, ExtrinsicSignature::Normal(signature_data)).ok_or(())?;
 		sp_io::offchain::submit_transaction(xt.encode())
 	}
 }
@@ -162,7 +163,7 @@ pub trait SubmitUnsignedTransaction<T: crate::Trait, Call> {
 	/// Returns `Ok` if the transaction was submitted correctly
 	/// and `Err` if transaction was rejected from the pool.
 	fn submit_unsigned(call: impl Into<Call>) -> Result<(), ()> {
-		let xt = Self::Extrinsic::new(call.into(), None).ok_or(())?;
+		let xt = Self::Extrinsic::new(call.into(), ExtrinsicSignature::Detached).ok_or(())?;
 		sp_io::offchain::submit_transaction(xt.encode())
 	}
 }
